@@ -1,0 +1,54 @@
+# Agentic AI Tabanlı Otomatik Log Yönetimi: Mimari ve İşleyiş Dokümanı
+
+## 1. Yönetici Özeti
+Bu doküman, pasif bir veri yığını olan logların, **Agentic AI (Otonom Yapay Zeka Ajanları)** kullanılarak nasıl aktif ve akıllı tetikleyicilere dönüştürülebileceğini incelemektedir. Geleneksel kural tabanlı (If-Else) yapıların aksine bu mimari; logun içeriğini Doğal Dil İşleme (NLP) ile anlayan, bağlama göre hangi aksiyonun alınacağına kendi karar veren ve maliyetleri optimize etmek için **RAG (Retrieval-Augmented Generation)** kullanan esnek bir yazılım iskeleti sunar.
+
+---
+
+## 2. Mimarinin Temel Bileşenleri ve İşleyiş Mantığı
+
+Sistem, logların yakalanmasından otonom aksiyon alınmasına kadar uzanan olay güdümlü (event-driven) bir mimari üzerine inşa edilmiştir.
+
+### 2.1. Log Yakalayıcı (Log Appender Katmanı)
+Sistemin ilk giriş noktasıdır. Uygulama seviyesinde çalışan özel bir dinleyici (appender), logları diske yazmadan veya merkezi bir sunucuya göndermeden önce araya girer. Amaç, sadece belirli bir öneme sahip logları (örneğin sadece "ERROR" seviyesinde olan ve spesifik anahtar kelimeler barındıran kayıtları) yakalayıp doğrudan AI işlemcisine iletmektir. Bu katman, sistemdeki gereksiz veri gürültüsünü engeller.
+
+### 2.2. Yapay Zeka İşlemcisi ve Karar Mekanizması (AI Processor)
+Mimarinin kalbi ve en "Agentic" (otonom) olduğu yer burasıdır. Geleneksel sistemlerde "Eğer logda X yazıyorsa, Y scriptini çalıştır" şeklinde sabit ve manuel eşleştirmeler yapılır. Bu yeni yapıda ise fonksiyonlar (aksiyonlar) sadece kısa açıklamalarla sisteme tanımlanır. Yapay zeka, gelen logun semantik anlamını okur, olayın bağlamını anlar ve **hangi aksiyonun alınması gerektiğine otonom olarak karar verir.** Örneğin sistemde "Destek Kaydı Aç" ve "Acil Durum Bildir" adında iki yetenek tanımlıysa, AI logun aciliyetine göre bu iki yetenekten birini kendi inisiyatifiyle seçer.
+
+### 2.3. Dinamik Tetikleme ve Otonom Davranış
+Sisteme birbirine benzeyen ancak niyet (intent) olarak farklı iki log geldiğinde, AI işlemcisi herhangi bir statik kurala ihtiyaç duymadan aradaki farkı anlar:
+* **Rutin Durum:** Kullanıcının sipariş durumunu sorduğu sıradan bir hata logu geldiğinde, AI bunun acil olmadığını anlar ve standart bir destek bileti (ticket) oluşturur.
+* **Kritik Durum:** Kullanıcının "yöneticiyle görüşmek istiyorum" veya "acil" gibi kelimeler kullandığı bir hata logu geldiğinde ise AI durumu analiz eder ve konuyu doğrudan nöbetçi ekibe (escalation) yönlendirir.
+
+---
+
+## 3. Gelişmiş Ölçeklendirme Stratejileri
+
+Kurumsal yapılarda binlerce logu doğrudan Büyük Dil Modellerine (LLM) göndermek ciddi API maliyetlerine ve işlem gecikmelerine yol açar. Bu sorunu çözmek için iki ana strateji bulunur:
+
+### Yaklaşım 1: Tüm Logları AI'a Göndermek (Maksimum Esneklik)
+Ön filtreleme yapılmaz ve tüm hata logları doğrudan yapay zekaya aktarılır. Yapay zeka tüm logları okuyarak insanların gözünden kaçabilecek gizli örüntüleri (anomalileri) keşfedebilir. Maliyeti yüksektir ancak manuel kural yazma zahmetini tamamen sıfırlar.
+
+### Yaklaşım 2: RAG ve Vektör Veritabanı ile Akıllı Yönlendirme (Maliyet Etkin)
+Bu mimaride, LLM'den önce bir "Vektör Veritabanı" (Pinecone, FAISS vb.) bariyeri kurulur. Gelen log, geçmişteki logların vektörel (anlamsal) karşılıklarıyla karşılaştırılır. Sistemin çalışma mantığı şu şekildedir:
+1. Gelen log anında taranır.
+2. Sadece geçmiş vakalara dayanarak "Kritik" (Critical) olarak sınıflandırılan loglar AI işlemcisine aksiyon alması için gönderilir.
+3. Kritik olmayan rutin loglar ise pahalı AI işlemcisine sokulmadan doğrudan arşive kaldırılır.
+
+---
+
+## 4. Operasyonel Senaryo Örnekleri
+
+Aşağıdaki senaryolar, Agentic AI mimarisinin logları nasıl yorumlayıp yapısal bir aksiyona dönüştürdüğünü göstermektedir.
+
+### Senaryo 1: Dinamik Yazılım Destek Operasyonu
+* **Durum:** Bir SaaS platformunda kullanıcılar sisteme dosya yüklerken hata almaktadır ve destek formundan şikayet yazarlar.
+* **Log Girdisi:** `ERROR customer-support error, customer ID 1099, query: "Dünden beri raporları PDF olarak indiremiyorum, sunucu 500 hatası veriyor, çok acil!"`
+* **Sistem İşleyişi:** Log yakalayıcı bu kaydı AI'a gönderir. AI, metindeki "sunucu 500 hatası" ve "çok acil" ifadelerini analiz eder. Normal bir destek bileti (ticket) açmak yerine, bunun genel bir sistem kesintisi (outage) olduğunu kavrar.
+* **Otonom Aksiyon:** AI, tanımlı yetenekleri arasından "Escalate Issue" (Sorunu Büyüt) aksiyonunu seçer ve log içeriğini doğrudan Yazılım (DevOps) ekibinin PagerDuty veya Slack kanalına "Kritik Hata" (High Priority Issue) olarak yönlendirir.
+
+### Senaryo 2: RAG Destekli Veri Tabanı Güvenlik Ajanı
+* **Durum:** Şirketin ana veri tabanı sunucusunda anormal bir yavaşlama yaşanır ve arka arkaya bağlantı hataları (Connection Timeout) oluşur.
+* **Log Girdisi:** Saniyede yüzlerce şüpheli IP'den gelen `db-connection failed` logu akmaya başlar.
+* **Sistem İşleyişi:** Tüm bu logları LLM'e göndermek sistemi kilitleyeceği ve maliyeti patlatacağı için **RAG tabanlı Yönlendirme** devreye girer. Vektör veritabanı, bu log yığınını geçmiş verilerle karşılaştırıp "Kritik Veri Tabanı Darboğazı / Olası Brute-Force" olarak sınıflandırır.
+* **Otonom Aksiyon:** RAG sistemi, binlerce log yerine durumun sadece bir özetini ana AI işlemcisine iletir. AI, durumu değerlendirerek sistemde tanımlı "Bağlantı havuzunu yeniden başlat ve IP'yi engelle" fonksiyonunu çalıştırır. Veri tabanı bağlantı havuzu yenilenir ve şüpheli IP adresi güvenlik duvarından otonom olarak engellenir.
