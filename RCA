@@ -1,0 +1,55 @@
+# Otonom BT Kök Neden Analizi (RCA) Ajanı: Mimari ve İşleyiş Dokümanı
+
+## 1. Yönetici Özeti
+Bu doküman, sistem kesintilerini ve performans darboğazlarını tespit etmek amacıyla tasarlanmış Yapay Zeka (LLM) destekli otonom log analiz mimarisinin özetini içermektedir. Geleneksel manuel hata arama süreçlerinin yerini alan bu sistem; logları toplar, yapısal formata dönüştürür, örüntüleri analiz eder ve BT ekiplerine "kök neden" ve "çözüm önerilerini" içeren makine tarafından okunabilir (JSON) raporlar sunar.
+
+---
+
+## 2. Sistem Mimarisi ve Teknoloji Yığını
+Sistem, uçtan uca otonom bir veri hattı (pipeline) olarak çalışacak şekilde tasarlanmıştır.
+
+| Katman | İşlev | Tercih Edilen Araçlar |
+| :--- | :--- | :--- |
+| **Veri Toplama (Ingestion)** | Dağıtık sistemlerden eş zamanlı log çekimi. | Fluentd, Logstash |
+| **İşleme ve Ayrıştırma** | Yapısal olmayan metinlerin (hata kodları, IP, tarih) ayrıştırılması. | Python (Pandas, Regex) |
+| **Depolama ve Arama** | Yüksek hacimli logların indekslenmesi ve hızlı sorgulanması. | Elasticsearch, OpenSearch |
+| **Yapay Zeka Motoru** | Log bağlamını okuyarak kök neden hipotezleri üretilmesi. | GPT-4o, Claude 3.5 Sonnet |
+| **Görselleştirme ve Alarm** | Üretilen raporların izleme panellerine ve ilgili ekiplere iletilmesi. | Prometheus, Grafana, PagerDuty |
+
+---
+
+## 3. Girdi ve Çıktı Modeli
+Ajanın halüsinasyon görmesini (yanlış sonuç üretmesini) engellemek ve sistemlerle entegre çalışmasını sağlamak için katı bir girdi/çıktı formatı uygulanır.
+
+* **Girdi (Input):** Ham log satırları (Zaman damgası, hata kodu) ve Sistemin Mevcut Bağlamı (Örn: "Şu an üretim ortamında aktif kampanya var").
+* **Çıktı (Output):** Serbest metin yerine, aşağıdaki alanları zorunlu kılan katı bir **JSON** veri bloğu:
+  * **Hata Kimliği ve Adı**
+  * **Kanıtlar** (Tespiti sağlayan spesifik log satırları)
+  * **Etki Analizi** (Kesinti süresi, etkilenen kullanıcı oranı)
+  * **Güven Skoru** (Teşhisin doğruluk yüzdesi)
+  * **Çözüm (Mitigation) Önerileri**
+
+---
+
+## 4. Operasyonel Senaryo Örnekleri
+
+Aşağıdaki senaryolar, ajanın gelen logları nasıl yorumlayıp yapısal bir aksiyona dönüştürdüğünü göstermektedir.
+
+### Senaryo 1: E-Ticaret Platformunda Veri Tabanı Darboğazı
+* **Durum:** Uygulama sunucularından yoğun miktarda `DB_TIMEOUT_503` hataları gelmeye başlar.
+* **Ajanın Girdisi:** Uygulama logları ve "Kampanya dönemi %20 trafik artışı var" bağlamı.
+* **Ajanın Analizi ve Aksiyonu:** Ajan, logları saniyeler içinde tarar ve ağ gecikmesi (network latency) uyarılarını filtreden geçirerek asıl sorunun veri tabanı bağlantı havuzunun (connection pool) dolması olduğuna karar verir.
+* **Sistem Çıktısı (Özet):**
+  * *Kök Neden:* Yüksek işlem hacmine bağlı Veri Tabanı Aşırı Yüklenmesi (Güven Skoru: %85).
+  * *Kanıt:* Saat 08:15 ile 08:19 arasındaki ardışık 503 hata logları.
+  * *Çözüm Önerisi:* "Veri tabanı bağlantı havuzu boyutunu artırın ve ağır SQL sorgularını optimize edin."
+
+### Senaryo 2: Active Directory Üzerinde Hizmet Reddi (DDoS / Brute Force) Etkisi
+* **Durum:** Şirket içi kullanıcılar sistemlere çok yavaş giriş yaptıklarını veya hiç yapamadıklarını bildirir.
+* **Ajanın Girdisi:** Active Directory Security loglarında yüzlerce `Event ID: 4625 (Logon Failed)` ve `Event ID: 4624 (Logon Success)` kayıtları.
+* **Ajanın Analizi ve Aksiyonu:** Ajan, saniyede binlerce hatalı giriş denemesi yapıldığını tespit eder. Bu durumun normal bir şifre unutma olayı olmadığını, bir sistemin (veya dış kaynağın) Domain Controller'ı sorgu bombardımanına tuttuğunu (ve kaynakları tükettiğini) belirler.
+* **Sistem Çıktısı (Özet):**
+  * *Kök Neden:* 192.168.5.50 IP adresinden gelen Brute Force / Kimlik Doğrulama Fırtınası (Güven Skoru: %98).
+  * *Kanıt:* Son 3 dakikada aynı servis hesabı için üretilen 4500 adet 4625 logu.
+  * *Çözüm Önerisi:* "192.168.5.50 IP adresinden gelen trafiği güvenlik duvarından (Firewall) geçici olarak engelleyin ve ilgili servis hesabının şifresini değiştirin."
+
